@@ -1,0 +1,430 @@
+create database BeautySalon
+
+use BeautySalon
+go
+create table Personal (
+master_id int identity(1, 1) primary key,
+FIO varchar(100) not null,
+birthday Date not null,
+phone varchar(11) not null unique,
+work varchar(12) not null,
+salary float not null,
+exp int not null);
+go
+
+use BeautySalon
+go
+create function fullAge
+(@startdate date, @enddate date)
+returns int
+as
+begin
+return (datediff(year, @startdate, @enddate) -
+       case
+           when month(@startdate) < month(@enddate)
+	   then 0
+	   when month(@startdate) > month(@enddate)
+	   then 1
+	   when day(@startdate) > day(@enddate)
+	   then 1
+	   else 0
+       end)
+end;
+go
+
+use BeautySalon
+go
+alter table Personal
+add constraint Age_Check check ([dbo].[fullAge](birthday, convert(date, getdate()))>=(18));
+go
+
+use BeautySalon
+go
+create table Clients (
+client_id int identity(1, 1) primary key,
+FIO_cl varchar(100) not null,
+birthday date not null,
+phone varchar(11) not null unique);
+go
+
+use BeautySalon
+go
+alter table Clients
+add constraint Age_Check_Zero check ([dbo].[fullAge](birthday, convert(date, getdate()))>=(0));
+go
+
+use BeautySalon
+go
+create table Prices (
+service varchar(12) not null,
+master_id int not null references [dbo].[Personal](master_id) on update cascade on delete cascade,
+FIO_master varchar(100) not null,
+work varchar(12) not null,
+price float not null,
+constraint PR_Prices primary key clustered (service, master_id));
+go
+
+use BeautySalon
+go
+create table Loggings (
+id_log int identity(1,1) primary key,
+master_id int not null references [dbo].[Personal](master_id) on update cascade on delete cascade,
+client_id int not null references [dbo].[Clients](client_id) on update cascade on delete cascade,
+FIO_cl varchar(100) not null,
+FIO_mast varchar(100) not null,
+work varchar(12) not null,
+date date not null,
+time time not null,
+service varchar(12) not null,
+constraint FK_Loggings foreign key (service, master_id) references [dbo].[Prices](service, master_id)
+on update cascade on delete cascade);
+go
+
+alter database BeautySalon set trustworthy on;
+go
+create assembly CLR
+from 'D:\Education\5 sem\DB\TR\CLR\CLR\bin\Debug\CLR.dll'
+with permission_set = unsafe;
+go
+
+use BeautySalon
+go
+create function isStartLessThanEnd(@starttime datetime, @endtime datetime)
+returns bit
+as
+external name CLR.[CLR.Function].fullTime
+go
+
+use BeautySalon
+go
+alter table Loggings
+add constraint Actuality check ([dbo].[isStartLessThanEnd](getdate(), cast(date as datetime) + cast(time as datetime))=0);
+go
+
+use BeautySalon
+go
+create table Materials (
+product varchar(15) primary key,
+brand varchar(15) not null,
+count int not null,
+cost real not null);
+go
+
+use BeautySalon
+go
+create table Sales (
+id_sale int identity(1,1) primary key,
+master_id int not null references [dbo].[Personal](master_id) on update cascade on delete cascade,
+product varchar(15) not null references [dbo].[Materials](product) on update cascade on delete cascade,
+count int not null,
+cost real not null,
+FIO_sale varchar(100) not null,
+work_sale varchar(12) not null);
+go
+
+use BeautySalon
+go
+create function findLoggings (@date date)
+returns table
+as return
+(
+    select * from Loggings
+    where Loggings.date = @date
+);
+go
+
+use BeautySalon
+go
+create procedure AddEmployee
+    @FIO varchar(100),
+    @birthday date,
+    @phone varchar(11),
+    @work varchar(12),
+    @salary float,
+    @exp int
+as
+    insert into Personal (FIO, birthday, phone, work, salary, exp)
+    values (@FIO, @birthday, @phone, @work, @salary, @exp);
+go
+create procedure UpdateEmpoyee
+    @id int,
+    @FIO varchar(100),
+    @birthday date,
+    @phone varchar(11),
+    @work varchar(12),
+    @salary float,
+    @exp int
+as
+    update Personal set FIO = @FIO, birthday = @birthday, phone = @phone,
+    work = @work, salary = @salary, exp = @exp
+    where master_id = @id;
+go
+create procedure RemoveEmployee
+    @id int
+as
+    delete from Personal where master_id = @id;
+go
+
+use BeautySalon
+go
+create procedure AddClient
+	@FIO_cl varchar(100),
+	@birthday date,
+	@phone varchar(11)
+as
+	insert into Clients(FIO_cl, birthday, phone)
+	values (@FIO_cl, @birthday, @phone);
+go
+create procedure UpdateClient
+	@id int,
+	@FIO varchar(100),
+	@birthday date,
+	@phone varchar(11)
+as
+	update Clients set FIO_cl = @FIO, birthday = @birthday, phone = @phone
+	where client_id = @id;
+go
+create procedure RemoveClient
+	@id int
+as
+	delete from Clients where client_id = @id;
+go
+
+use BeautySalon
+go
+create function GetClientPhoneByID
+	(@id int)
+returns varchar(11)
+as
+begin
+	return (
+	select phone from Clinets where client_id = @id)
+end;
+go
+
+use BeautySalon
+go
+create procedure AddPrice
+	@service varchar(12),
+	@master_id int,
+	@price float
+as
+begin
+	declare @FIO varchar(100);
+	set @FIO = (select FIO from Personal where master_id = @master_id);
+	declare @work varchar(12);
+	set @work = (select work from Personal where master_id = @master_id);
+	insert into Prices(service, master_id, FIO_master, work, price)
+	values (@service, @master_id, @FIO, @work, @price);
+end
+go
+create procedure UpdatePrice
+	@service varchar(12),
+	@master_id int,
+	@price float
+as
+begin
+	declare @FIO varchar(100);
+	set @FIO = (select FIO from Personal where master_id = @master_id);
+	declare @work varchar(12);
+	set @work = (select work from Personal where master_id = @master_id);
+	update Prices set FIO_master = @FIO, work = @work, price = @price
+	where service = @service and master_id = @master_id;
+end
+go
+create procedure RemovePrice
+	@service varchar(12),
+	@master_id int
+as
+	delete from Prices where service = @service and master_id = @master_id;
+go
+
+use BeautySalon
+go
+create procedure AddLog
+	@master_id int,
+	@client_id int,
+	@date date,
+	@time time,
+	@service varchar(12)
+as
+begin
+	declare @FIO_cl varchar(100);
+	set @FIO_cl = (select FIO_cl from Clients where client_id = @client_id);
+	declare @FIO_master varchar(100);
+	set @FIO_master = (select FIO from Personal where master_id = @master_id);
+	declare @work varchar(12);
+	set @work = (select work from Personal where master_id = @master_id);
+	insert into Loggings(master_id, client_id, FIO_cl, FIO_mast, work, date, time, service)
+	values (@master_id, @client_id, @FIO_cl, @FIO_master, @work, @date, @time, @service);
+end
+go
+create procedure ChangeLog
+	@id_log int,
+	@date date,
+	@time time
+as
+	update Loggings set date = @date, time = @time
+	where id_log = @id_log;
+go
+create procedure RemoveLog
+	@id_log int
+as
+	delete from Loggings
+	where id_log = @id_log;
+go
+
+use BeautySalon
+go
+create procedure AddMaterial
+	@product varchar(15),
+	@brand varchar(15),
+	@count int,
+	@cost real
+as
+	insert into Materials(product, brand, count, cost)
+	values (@product, @brand, @count, @cost);
+go
+create procedure UpdateMaterial
+	@product varchar(15),
+	@count int,
+	@cost real
+as
+	update Materials set count = @count, cost = @cost
+	where product = @product;
+go
+create procedure DeleteMaterial
+	@product varchar(15)
+as
+	delete from Materials
+	where product = @product;
+go
+
+use BeautySalon
+go
+create procedure AddSale
+	@master_id int,
+	@product varchar(15),
+	@count int,
+	@cost real
+as
+	declare @FIO varchar(100);
+	set @FIO = (select FIO from Personal where master_id = @master_id)
+	declare @work varchar(12);
+	set @work = (select work from Personal where master_id = @master_id)
+	insert into Sales(master_id, product, count, cost, FIO_sale, work_sale)
+	values (@master_id, @product, @count, @cost, @FIO, @work);
+go
+create procedure UpdateSale
+	@master_id int,
+	@id int,
+	@product varchar(15),
+	@count int
+as
+	declare @FIO varchar(100);
+	set @FIO = (select FIO from Personal where master_id = @master_id)
+	declare @work varchar(12);
+	set @work = (select work from Personal where master_id = @master_id)
+	update Sales set count += @count, FIO_sale = @FIO, work_sale = @work
+	where id_sale = @id;
+go
+create procedure DeleteSale
+	@id int
+as
+	delete from Sales
+	where id_sale = @id;
+go
+
+use BeautySalon
+go
+create view PersonalList
+as
+select FIO as [ФИО], birthday as [День рождения], phone as [Номер телефона],
+	   work as [Должность], salary as [Зарплата], exp as [Опыт работы]
+	   from Personal;
+go
+
+use BeautySalon
+go
+create view ClientsList
+as
+select FIO_cl as [ФИО клиента], birthday as [Дата рождения клиента], phone as [Номер телефона клиента]
+	   from Clients;
+go
+
+use BeautySalon
+go
+create view PriceList
+as
+select service as [Услуга], FIO_master as [ФИО мастера], work as [Должность мастера], price as [Стоимость услуги]
+	   from Prices;
+go
+
+use BeautySalon
+go
+create view LogJournal
+as
+select Loggings.FIO_cl as [ФИО клиента], phone as [Номер телефона клиента], FIO_mast as [ФИО мастера], work as [Должность мастера],
+	   date as [Дата записи], time as [Время записи], service as [Наименование оказываемой услуги]
+	   from Loggings left join Clients on Loggings.client_id = Clients.client_id;
+go
+
+use BeautySalon
+go
+create view MaterialsList
+as
+select product as [Нименование продукции], brand as [Производитель], count as [Количество товаров], cost as [Стоимость за единицу]
+	   from Materials;
+go
+
+use BeautySalon
+go
+create view SalesJournal
+as
+select product as [Нименование проданной продукции], count as [Количество проданного товара], cost as [Стоимость за единицу],
+	   FIO_sale as [ФИО сотрудника, продавшего товар], work_sale as [Должность сотрудника, продавшего товар]
+	   from Sales;
+go
+
+use BeautySalon
+go
+create trigger RollbackLog on Loggings
+instead of insert
+as
+	declare @current_date date, @log_date date;
+	set @current_date = convert(date, getdate());
+	select @log_date = date from inserted;
+	if [dbo].[isLessThanMonth](@current_date, @log_date)=0 
+		rollback transaction;
+	else
+		insert into Loggings(master_id, client_id, FIO_cl, FIO_mast, work, date, time, service)
+		select master_id, client_id, FIO_cl, FIO_mast, work, date, time, service from inserted;
+go
+
+use BeautySalon
+go
+create view EmployeesID
+as
+select master_id as [ID], FIO as [ФИО] from Personal
+go
+
+use BeautySalon
+go
+create view ClientsID
+as
+select client_id as [ID], FIO_cl as [ФИО] from Clients
+go
+
+use BeautySalon
+go
+create view LogID
+as
+select id_log as [ID], FIO_cl as [ФИО клиента] from Loggings
+go
+
+use BeautySalon
+go
+create view SalesID
+as
+select id_sale as [ID сделки], product as [Проданный товар] from Sales
+go
